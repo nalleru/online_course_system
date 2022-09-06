@@ -57,6 +57,33 @@ from bootstrap_modal_forms.generic import (
 def home(request):
     return render(request, 'home.html')
 
+def logoutView(request):
+    logout(request)
+    return redirect('home')
+
+def login_form(request):
+    return render(request, 'login.html')
+
+def loginView(request):
+    if request.method == 'POST':
+        username = request.POST['username']
+        password = request.POST['password']
+        user = authenticate(request, username=username, password=password)
+        if user is not None and user.is_active:
+            auth.login(request, user)
+            if user.is_admin or user.is_superuser:
+                return redirect('dashboard')
+            elif user.is_instructor:
+                return redirect('instructor')
+            elif user.is_student:
+                return redirect('student')
+            else:
+                return redirect('login_form')
+
+        else:
+            messages.info(request, 'Invalid Username or Password')
+            return redirect('login_form')
+
 
 # Student views
 
@@ -73,5 +100,91 @@ class StudentSignUpView(CreateView):
         user = form.save()
         login(self.request, user)
         return redirect('home')
+
+
+#Admin views
+def dashboard(request):
+    student = User.objects.filter(is_student=True).count()
+    instructor = User.objects.filter(is_instructor=True).count()
+    course = Course.objects.all().count()
+    users = User.objects.all().count()
+    context = {'student':student, 'course':course, 'instructor':instructor, 'users': users}
+
+    return render(request, 'dashboard/admin/home.html', context)
+
+
+class InstructorSignUpView(CreateView):
+    model = User
+    form_class = InstructorSignUpForm
+    template_name = 'dashboard/admin/signup_form.html'
+
+    def get_context_data(self, **kwargs):
+        kwargs['user_type'] = 'instructor'
+        return super().get_context_data(**kwargs)
+
+    def form_valid(self, form):
+        user = form.save()
+        messages.success(self.request, 'Instructor Added successfully')
+        return redirect('isign')
+
+
+class AdminStudent(CreateView):
+    model = User
+    form_class = StudentSignUpForm
+    template_name = 'dashboard/admin/student_signup_form.html'
+
+    def get_context_data(self, **kwargs):
+        kwargs['user_type'] = 'student'
+        return super().get_context_data(**kwargs)
+
+    def form_valid(self, form):
+        user = form.save()
+        messages.success(self.request, 'Student Added successfully')
+        return redirect('addstudent')
+
+
+def course(request):
+    if request.method == 'POST':
+        name = request.POST['name']
+
+        a = Course(name=name)
+        a.save()
+        messages.success(request, 'New Course Registered successfully!')
+        return redirect('course')
+    else:
+        return render(request, 'dashboard/admin/course.html')
+
+
+class AdminCreatePost(CreateView):
+    model = Announcement
+    form_class = PostForm
+    template_name = 'dashboard/admin/post_form.html'
+    success_url = reverse_lazy('alpost')
+
+    def form_valid(self, form):
+        self.object = form.save(commit=False)
+        self.object.user = self.request.user
+        self.object.save()
+        return super().form_valid(form)
+
+
+class AdminListAnnouncement(LoginRequiredMixin, ListView):
+    model = Announcement
+    template_name = 'dashboard/admin/announcement_list.html'
+
+    def get_queryset(self):
+        return Announcement.objects.filter(posted_at=timezone.now()).order_by('posted_at')
+
+
+class ListAllAnnouncements(LoginRequiredMixin, ListView):
+    model = Announcement
+    template_name = 'dashboard/admin/list_announcements.html'
+    context_object_name = 'announcements'
+    paginate_by = 10
+
+    def get_queryset(self):
+        return Announcement.objects.order_by('-id')
+
+
 
 
